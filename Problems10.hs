@@ -108,8 +108,12 @@ subst x m (Var y)
   | otherwise = Var y
 subst x m (Lam y n) = Lam y (substUnder x m y n)
 subst x m (App n1 n2) = App (subst x m n1) (subst x m n2)
-subst x m n = undefined
-
+subst x m (Store n) = Store (subst x m n)
+subst _ _ Recall = Recall
+subst x m (Throw n) = Throw (subst x m n)
+subst x m (Catch n y n')
+  | x == y = Catch (subst x m n) y n'   -- No substitution in n'
+  | otherwise = Catch (subst x m n) y (subst x m n')
 {-------------------------------------------------------------------------------
 
 Problems 3 - 10: Small-step semantics
@@ -202,7 +206,34 @@ bubble; this won't *just* be `Throw` and `Catch.
 -------------------------------------------------------------------------------}
 
 smallStep :: (Expr, Expr) -> Maybe (Expr, Expr)
-smallStep = undefined
+smallStep (Const _, _) = Nothing
+smallStep (Var _, _) = Nothing
+smallStep (Lam _ _, _) = Nothing
+smallStep (Plus (Const x) (Const y), acc) = Just (Const (x + y), acc)
+smallStep (Plus (Const x) m, acc)
+  | isValue m = Just (Plus (Const x) m, acc)
+  | otherwise = Just (m, acc)
+smallStep (Plus m (Const y), acc)
+  | isValue m = Just (Plus m (Const y), acc)
+  | otherwise = Just (m, acc)
+smallStep (Plus m n, acc)
+  | isValue m = Just (Plus m n, acc)
+  | isValue n = Just (Plus m n, acc)
+  | otherwise = Just (m, acc)
+smallStep (Store m, acc)
+  | isValue m = Just (Recall, m)
+  | otherwise = Just (m, acc)
+smallStep (Recall, acc) = Just (acc, acc)
+smallStep (Throw m, acc)
+  | isValue m = Just (Throw m, acc)
+  | otherwise = Just (m, acc)
+smallStep (Catch m y n, acc)
+  | isValue m = Just (m, acc)
+  | otherwise = Just (m, acc)
+smallStep (App (Lam x body) arg, acc) = Just (subst x arg body, acc)
+smallStep (App m n, acc)
+  | isValue m = Just (App m n, acc)
+  | otherwise = Just (m, acc)
 
 steps :: (Expr, Expr) -> [(Expr, Expr)]
 steps s = case smallStep s of
